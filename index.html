@@ -371,9 +371,12 @@
     <div class="container">
         <header>
             <h1 onclick="disconnectBLE()">iPixel Syllabes</h1>
-            <div class="connection-status">
-                <div class="status-dot" id="status-dot"></div>
-                <span id="status-text">Déconnecté</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button class="btn" id="btn-fullscreen" onclick="toggleFullscreen()" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); width: 34px; height: 34px; border-radius: 50%; color: #fff; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center;" title="Plein écran">⛶</button>
+                <div class="connection-status">
+                    <div class="status-dot" id="status-dot"></div>
+                    <span id="status-text">Déconnecté</span>
+                </div>
             </div>
         </header>
 
@@ -626,6 +629,18 @@
             }
         }
 
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log(`Error enabling fullscreen: ${err.message}`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
         // --- BLE Class ---
         class IPixelBLE {
             constructor() {
@@ -779,7 +794,7 @@
                 this.notifyChar = null;
                 updateStatus('offline', 'Déconnecté');
                 document.getElementById('connect-overlay').classList.remove('hidden');
-                if (autoplayIntervalId) {
+                if (autoplayActive) {
                     toggleAutoplay();
                 }
             }
@@ -888,7 +903,7 @@
         let wordIdx = 0;
         let stepIdx = -1;
         let isNavigating = false;
-        let autoplayIntervalId = null;
+        let autoplayActive = false;
         let autoplaySpeed = 2.0;
         let lastNavTime = 0;
         let confettiActive = false;
@@ -952,7 +967,7 @@
 
         function getBestFontSize(ctx, text, maxWidth = 32) {
             for (let size = 16; size >= 8; size--) {
-                ctx.font = `bold ${size}px Silkscreen, monospace`;
+                ctx.font = `${size}px Silkscreen, monospace`;
                 if (ctx.measureText(text).width <= maxWidth) {
                     return size;
                 }
@@ -1028,7 +1043,7 @@
         }
 
         // --- Render functions ---
-        async function triggerRender() {
+        async function triggerRender(skipBLE = false) {
             if (!ble.connected) return;
 
             const selectedEmoji = emojiList[wordIdx];
@@ -1044,12 +1059,14 @@
             } else {
                 // Compute progress percentage if autoplay is active
                 let progressPct = null;
-                if (autoplayIntervalId && lastNavTime > 0) {
+                if (autoplayActive && lastNavTime > 0) {
                     const elapsed = (Date.now() - lastNavTime) / 1000;
                     progressPct = Math.min(100.0, (elapsed / autoplaySpeed) * 100);
                 }
                 renderSyllableState(fullWord, syllables, stepIdx, progressPct);
             }
+
+            if (skipBLE) return;
 
             // Convert canvas to RGB PNG bytes and send to device
             try {
@@ -1078,6 +1095,50 @@
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(emoji, 16, 16);
+        }
+
+        function drawPixelText(ctx, text, size, color, targetY, targetHeight) {
+            const scale = 8;
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 32 * scale;
+            tempCanvas.height = 32 * scale;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            tempCtx.fillStyle = '#000000';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            
+            tempCtx.font = `${size * scale}px Silkscreen, monospace`;
+            tempCtx.fillStyle = '#FFFFFF';
+            tempCtx.textAlign = 'center';
+            tempCtx.textBaseline = 'middle';
+            
+            const midY = (targetY + targetHeight / 2) * scale;
+            tempCtx.fillText(text, 16 * scale, midY);
+            
+            const imgData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            const data = imgData.data;
+            
+            ctx.fillStyle = color;
+            for (let py = 0; py < 32; py++) {
+                for (let px = 0; px < 32; px++) {
+                    // Scan the entire 8x8 block on the high-res canvas
+                    let activeCount = 0;
+                    for (let dy = 0; dy < scale; dy++) {
+                        for (let dx = 0; dx < scale; dx++) {
+                            const sx = px * scale + dx;
+                            const sy = py * scale + dy;
+                            const idx = (sy * tempCanvas.width + sx) * 4;
+                            if (data[idx] > 128) {
+                                activeCount++;
+                            }
+                        }
+                    }
+                    // If any significant part of the block contains text (at least 4 pixels out of 64), render it
+                    if (activeCount >= 4 && py >= targetY && py < targetY + targetHeight) {
+                        ctx.fillRect(px, py, 1, 1);
+                    }
+                }
+            }
         }
 
         function renderSyllableState(fullWord, syllables, activeIdx, progressPct) {
@@ -1157,16 +1218,10 @@
                 ctx.fillRect(dotX, dotY, 1, 1);
             }
 
-            // Draw active syllable
+            // Draw active syllable (crisp nearest-neighbor pixel rendering matching Python's 1-bit mask)
             const syllable = syllables[activeIdx] || "";
             const fontSize = getBestFontSize(ctx, syllable, 32);
-            ctx.font = `bold ${fontSize}px Silkscreen, monospace`;
-            ctx.fillStyle = syllableColor;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            
-            const midY = sylYStart + Math.floor(sylHeight / 2);
-            ctx.fillText(syllable, 16, midY);
+            drawPixelText(ctx, syllable, fontSize, syllableColor, sylYStart, sylHeight);
 
             // Draw progress bar
             if (progressPct !== null) {
@@ -1270,13 +1325,10 @@
         // --- Autoplay ---
         function toggleAutoplay(forceState = null) {
             const btn = document.getElementById('btn-autoplay');
-            const shouldStart = (forceState !== null) ? forceState : !autoplayIntervalId;
+            const shouldStart = (forceState !== null) ? forceState : !autoplayActive;
 
             if (!shouldStart) {
-                if (autoplayIntervalId) {
-                    clearInterval(autoplayIntervalId);
-                    autoplayIntervalId = null;
-                }
+                autoplayActive = false;
                 btn.classList.remove('active');
                 btn.textContent = 'Auto Run';
             } else {
@@ -1284,21 +1336,31 @@
                     showToast("Écran déconnecté. Connexion requise.");
                     return;
                 }
+                autoplayActive = true;
                 lastNavTime = Date.now();
                 btn.classList.add('active');
                 btn.textContent = 'Pause';
                 
-                // Run ticker for progress bar updates
-                autoplayIntervalId = setInterval(async () => {
-                    const elapsed = (Date.now() - lastNavTime) / 1000;
-                    if (elapsed >= autoplaySpeed) {
-                        await navigate('right');
-                    } else {
-                        // Just redraw the progress bar
-                        await triggerRender();
-                    }
-                }, 200);
+                // Run loop
+                runAutoplayLoop();
             }
+        }
+
+        async function runAutoplayLoop() {
+            // Run loop at maximum safe hardware speed regulated by BLE ACKs
+            while (autoplayActive && ble.connected) {
+                const elapsed = (Date.now() - lastNavTime) / 1000;
+                if (elapsed >= autoplaySpeed) {
+                    await navigate('right');
+                } else {
+                    // Update progress bar on both local twin and physical screen
+                    // The sendImage call awaits the device's ACK, preventing overlapping writes!
+                    await triggerRender(false);
+                }
+                // Yield the main thread to keep browser UI responsive (50ms sleep)
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            autoplayActive = false;
         }
 
         function updateTimerVal(val) {
@@ -1327,6 +1389,14 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowRight') navigate('right');
             else if (e.key === 'ArrowLeft') navigate('left');
+        });
+
+        // --- Font Load Listener ---
+        // Re-render when fonts are fully loaded to replace monospace fallback with Silkscreen
+        document.fonts.ready.then(() => {
+            if (ble.connected) {
+                triggerRender();
+            }
         });
     </script>
 </body>
