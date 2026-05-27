@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iPixel Syllabes Remote (Web Bluetooth)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            height: -webkit-fill-available;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1b 100%);
+            color: #e0e0e0;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 12px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px;
+            flex-shrink: 0;
+        }
+
+        h1 {
+            font-size: 1.3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ff9f00, #ff5e3a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ff3b30;
+            box-shadow: 0 0 8px #ff3b30;
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.online {
+            background: #34c759;
+            box-shadow: 0 0 8px #34c759;
+        }
+
+        .status-dot.connecting {
+            background: #ffcc00;
+            box-shadow: 0 0 8px #ffcc00;
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { opacity: 0.4; }
+            to { opacity: 1; }
+        }
+
+        /* Digital Twin Screen (Mini Display) */
+        .twin-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+            perspective: 600px;
+        }
+
+        .matrix-preview {
+            background: #000;
+            border-radius: 16px;
+            width: 140px;
+            height: 140px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(255, 159, 0, 0.15);
+            border: 4px solid #222;
+        }
+
+        /* The actual canvas rendering at 32x32 but scaled up */
+        #matrix-canvas {
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        /* Controls Panel */
+        .controls-card {
+            background: rgba(26, 26, 42, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            flex-grow: 1;
+            min-height: 0;
+            justify-content: space-between;
+        }
+
+        .word-meta {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #8e8e93;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            flex-shrink: 0;
+        }
+
+        .nav-buttons {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            flex-grow: 1;
+            min-height: 0;
+        }
+
+        .btn {
+            border: none;
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            border-radius: 16px;
+            font-weight: 800;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .btn:active {
+            transform: scale(0.96);
+        }
+
+        .btn-giant {
+            width: 100%;
+            height: 100%;
+            font-size: 2.4rem;
+            background: linear-gradient(135deg, #ff9f00, #ff5e3a);
+            color: #000;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            box-shadow: 0 6px 20px rgba(255, 159, 0, 0.3);
+        }
+
+        .btn-giant:disabled {
+            background: #2a2a3a;
+            color: #555;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        /* Bottom Row with Prev & Autoplay */
+        .bottom-row {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr 1fr;
+            gap: 10px;
+            width: 100%;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            flex-shrink: 0;
+        }
+
+        .btn-small {
+            width: 100%;
+            height: 48px;
+            font-size: 0.9rem;
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .btn-small:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-autoplay {
+            width: 100%;
+            height: 48px;
+            font-size: 0.9rem;
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .btn-autoplay.active {
+            background: #34c759;
+            color: #000;
+            border-color: #34c759;
+            box-shadow: 0 0 12px rgba(52, 199, 89, 0.3);
+        }
+
+        .btn-confetti {
+            width: 100%;
+            height: 48px;
+            font-size: 1.3rem;
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .timer-control {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .timer-control label {
+            font-size: 0.8rem;
+            color: #8e8e93;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .timer-control label span {
+            color: #fff;
+            font-weight: 700;
+        }
+
+        .timer-control input[type="range"] {
+            width: 100%;
+            accent-color: #ff9f00;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .connect-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 15, 27, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            padding: 24px;
+            text-align: center;
+            gap: 20px;
+            transition: opacity 0.4s ease, cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .connect-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .connect-btn {
+            background: linear-gradient(135deg, #ff9f00, #ff5e3a);
+            color: #000;
+            border: none;
+            padding: 16px 32px;
+            font-size: 1.2rem;
+            font-weight: 800;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 10px 25px rgba(255, 159, 0, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .connect-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(255, 159, 0, 0.5);
+        }
+
+        .connect-btn:active {
+            transform: translateY(0);
+        }
+
+        .connect-title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+
+        .connect-subtitle {
+            font-size: 0.95rem;
+            color: #8e8e93;
+            max-width: 280px;
+            line-height: 1.5;
+        }
+
+        /* Toast notifications */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: rgba(255, 59, 48, 0.9);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .toast.visible {
+            transform: translateX(-50%) translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <!-- Connection Overlay -->
+    <div class="connect-overlay" id="connect-overlay">
+        <div>
+            <div class="connect-title">iPixel Syllabes</div>
+            <div class="connect-subtitle">Connectez votre écran LED Bluetooth iPixel pour commencer à apprendre.</div>
+        </div>
+        <button class="connect-btn" onclick="requestConnection()">
+            🔑 Connexion Écran
+        </button>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">Connexion échouée. Réessayez.</div>
+
+    <div class="container">
+        <header>
+            <h1 onclick="disconnectBLE()">iPixel Syllabes</h1>
+            <div class="connection-status">
+                <div class="status-dot" id="status-dot"></div>
+                <span id="status-text">Déconnecté</span>
+            </div>
+        </header>
+
+        <!-- Digital Twin LED Matrix (Mini Display) -->
+        <div class="twin-wrapper">
+            <div class="matrix-preview">
+                <canvas id="matrix-canvas" width="32" height="32"></canvas>
+            </div>
+        </div>
+
+        <!-- Controls Card -->
+        <div class="controls-card">
+            <div class="word-meta" id="word-meta">
+                Mot -- / --
+            </div>
+
+            <div class="nav-buttons">
+                <!-- Giant Next Button -->
+                <button class="btn btn-giant" id="btn-next" onclick="navigate('right')" aria-label="Suivant">
+                    SUIVANT
+                </button>
+            </div>
+
+            <!-- Bottom Row with Prev, Auto Run, Confetti -->
+            <div class="bottom-row">
+                <button class="btn btn-small" onclick="navigate('left')" aria-label="Précédent">
+                    Précédent
+                </button>
+                <button class="btn btn-autoplay" id="btn-autoplay" onclick="toggleAutoplay()">
+                    Auto Run
+                </button>
+                <button class="btn btn-confetti" onclick="triggerConfetti()" aria-label="Confetti">
+                    🎉
+                </button>
+            </div>
+
+            <!-- Autoplay Timer Slider -->
+            <div class="timer-control">
+                <label for="autoplay-timer">Vitesse: <span id="timer-val">2.0</span>s</label>
+                <input type="range" id="autoplay-timer" min="1.0" max="10.0" step="0.5" value="2.0" oninput="updateTimerVal(this.value)">
+            </div>
+        </div>
+        
+    </div>
+
+    <script>
+        // Custom 4x5 font definition matching Python
+        const FONT_4X5 = {
+            'A': [" ## ", "#  #", "####", "#  #", "#  #"],
+            'B': ["### ", "#  #", "### ", "#  #", "### "],
+            'C': [" ###", "#   ", "#   ", "#   ", " ###"],
+            'D': ["### ", "#  #", "#  #", "#  #", "### "],
+            'E': ["####", "#   ", "### ", "#   ", "####"],
+            'F': ["####", "#   ", "### ", "#   ", "#   "],
+            'G': [" ###", "#   ", "# ##", "#  #", " ###"],
+            'H': ["#  #", "#  #", "####", "#  #", "#  #"],
+            'I': ["####", " ## ", " ## ", " ## ", "####"],
+            'J': ["####", "   #", "   #", "#  #", " ## "],
+            'K': ["#  #", "# # ", "##  ", "# # ", "#  #"],
+            'L': ["#   ", "#   ", "#   ", "#   ", "####"],
+            'M': ["#  #", "####", "#  #", "#  #", "#  #"],
+            'N': ["#  #", "## #", "# ##", "#  #", "#  #"],
+            'O': [" ## ", "#  #", "#  #", "#  #", " ## "],
+            'P': ["### ", "#  #", "### ", "#   ", "#   "],
+            'Q': [" ## ", "#  #", "#  #", " ## ", "   #"],
+            'R': ["### ", "#  #", "### ", "# # ", "#  #"],
+            'S': [" ###", "#   ", " ## ", "   #", "### "],
+            'T': ["####", " ## ", " ## ", " ## ", " ## "],
+            'U': ["#  #", "#  #", "#  #", "#  #", " ## "],
+            'V': ["#  #", "#  #", " # #", " # #", "  # "],
+            'W': ["#  #", "#  #", "#  #", "####", "#  #"],
+            'X': ["#  #", " ## ", " ## ", " ## ", "#  #"],
+            'Y': ["#  #", "#  #", " ## ", " ## ", " ## "],
+            'Z': ["####", "  # ", " #  ", "#   ", "####"],
+            '0': [" ## ", "#  #", "#  #", "#  #", " ## "],
+            '1': [" ## ", "  # ", "  # ", "  # ", "####"],
+            '2': ["### ", "   #", " ## ", "#   ", "####"],
+            '3': ["### ", "   #", " ## ", "   #", "### "],
+            '4': ["#  #", "#  #", "####", "   #", "   #"],
+            '5': ["####", "#   ", "### ", "   #", "### "],
+            '6': [" ## ", "#   ", "### ", "#  #", " ## "],
+            '7': ["####", "   #", "  # ", " #  ", " #  "],
+            '8': [" ## ", "#  #", " ## ", "#  #", " ## "],
+            '9': [" ## ", "#  #", " ###", "   #", " ## "],
+            '-': ["    ", "    ", "### ", "    ", "    "],
+            '?': ["### ", "   #", " ## ", "    ", " #  "]
+        };
+
+        const VOCABULARY = {
+            "🐶": ["CHIEN", ["CHIEN"]],
+            "🐱": ["CHAT", ["CHAT"]],
+            "🐭": ["SOURIS", ["SOU", "RIS"]],
+            "🐹": ["HAMSTER", ["HAMS", "TER"]],
+            "🐰": ["LAPIN", ["LA", "PIN"]],
+            "🦊": ["RENARD", ["RE", "NARD"]],
+            "🐻": ["OURS", ["OURS"]],
+            "🐼": ["PANDA", ["PAN", "DA"]],
+            "🐨": ["KOALA", ["KO", "A", "LA"]],
+            "🐯": ["TIGRE", ["TI", "GRE"]],
+            "🦁": ["LION", ["LION"]],
+            "🐮": ["VACHE", ["VA", "CHE"]],
+            "🐷": ["COCHON", ["CO", "CHON"]],
+            "🐸": ["GRENOUILLE", ["GRE", "NOUIL", "LE"]],
+            "🐵": ["SINGE", ["SIN", "GE"]],
+            "🐧": ["MANCHOT", ["MAN", "CHOT"]],
+            "🐦": ["OISEAU", ["OI", "SEAU"]],
+            "🐤": ["POUSSIN", ["POUS", "SIN"]],
+            "🦆": ["CANARD", ["CA", "NARD"]],
+            "🦅": ["AIGLE", ["AI", "GLE"]],
+            "🦉": ["HIBOU", ["HI", "BOU"]],
+            "🐺": ["LOUP", ["LOUP"]],
+            "🐴": ["CHEVAL", ["CHE", "VAL"]],
+            "🐝": ["ABEILLE", ["A", "BEIL", "LE"]],
+            "🦋": ["PAPILLON", ["PA", "PIL", "LON"]],
+            "🐌": ["ESCARGOT", ["ES", "CAR", "GOT"]],
+            "🐢": ["TORTUE", ["TOR", "TUE"]],
+            "🐍": ["SERPENT", ["SER", "PENT"]],
+            "🐙": ["PIEUVRE", ["PIEU", "VRE"]],
+            "🦀": ["CRABE", ["CRA", "BE"]],
+            "🐠": ["POISSON", ["POIS", "SON"]],
+            "🐬": ["DAUPHIN", ["DAU", "PHIN"]],
+            "🐳": ["BALEINE", ["BA", "LEI", "NE"]],
+            "🦈": ["REQUIN", ["RE", "QUIN"]],
+            "🐊": ["CROCODILE", ["CRO", "CO", "DI", "LE"]],
+            "🦓": ["ZEBRE", ["ZE", "BRE"]],
+            "🐘": ["ELEPHANT", ["E", "LE", "PHANT"]],
+            "🦒": ["GIRAFE", ["GI", "RA", "FE"]],
+            "🐑": ["MOUTON", ["MOU", "TON"]],
+            "🐐": ["CHEVRE", ["CHE", "VRE"]],
+            "🐓": ["COQ", ["COQ"]],
+            "🍎": ["POMME", ["POM", "ME"]],
+            "🍐": ["POIRE", ["POI", "RE"]],
+            "🍊": ["ORANGE", ["O", "RAN", "GE"]],
+            "🍋": ["CITRON", ["CI", "TRON"]],
+            "🍌": ["BANANE", ["BA", "NA", "NE"]],
+            "🍉": ["PASTEQUE", ["PAS", "TE", "QUE"]],
+            "🍇": ["RAISIN", ["RAI", "SIN"]],
+            "🍓": ["FRAISE", ["FRAI", "SE"]],
+            "🍒": ["CERISE", ["CE", "RI", "SE"]],
+            "🍑": ["PECHE", ["PE", "CHE"]],
+            "🍍": ["ANANAS", ["A", "NA", "NAS"]],
+            "🥥": ["COCO", ["CO", "CO"]],
+            "🥝": ["KIWI", ["KI", "WI"]],
+            "🍅": ["TOMATE", ["TO", "MA", "TE"]],
+            "🥕": ["CAROTTE", ["CA", "ROT", "TE"]],
+            "🧅": ["OIGNON", ["OI", "GNON"]],
+            "🍞": ["PAIN", ["PAIN"]],
+            "🥐": ["CROISSANT", ["CROIS", "SANT"]],
+            "🧀": ["FROMAGE", ["FRO", "MA", "GE"]],
+            "🍕": ["PIZZA", ["PIZ", "ZA"]],
+            "🍔": ["BURGER", ["BUR", "GER"]],
+            "🍟": ["FRITES", ["FRI", "TES"]],
+            "🥚": ["OEUF", ["OEUF"]],
+            "🍳": ["OEUF", ["OEUF"]],
+            "🍨": ["GLACE", ["GLA", "CE"]],
+            "🍩": ["DONUT", ["DO", "NUT"]],
+            "🍪": ["COOKIE", ["COO", "KIE"]],
+            "🎂": ["GATEAU", ["GA", "TEAU"]],
+            "🍫": ["CHOCOLAT", ["CHO", "CO", "LAT"]],
+            "🍬": ["BONBON", ["BON", "BON"]],
+            "🥛": ["LAIT", ["LAIT"]],
+            "☕": ["CAFE", ["CA", "FE"]],
+            "🚗": ["VOITURE", ["VOI", "TU", "RE"]],
+            "🚕": ["TAXI", ["TA", "XI"]],
+            "🚌": ["BUS", ["BUS"]],
+            "🚲": ["VELO", ["VE", "LO"]],
+            "🛵": ["SCOOTER", ["SCOO", "TER"]],
+            "🏍️": ["MOTO", ["MO", "TO"]],
+            "🚂": ["TRAIN", ["TRAIN"]],
+            "✈️": ["AVION", ["A", "VI", "ON"]],
+            "🚀": ["FUSEE", ["FU", "SEE"]],
+            "⛵": ["BATEAU", ["BA", "TEAU"]],
+            "☀️": ["SOLEIL", ["SO", "LEIL"]],
+            "🌤️": ["NUAGE", ["NU", "AGE"]],
+            "🌧️": ["PLUIE", ["PLUIE"]],
+            "❄️": ["NEIGE", ["NEI", "GE"]],
+            "🏠": ["MAISON", ["MAI", "SON"]],
+            "🏫": ["ECOLE", ["E", "CO", "LE"]],
+            "🎈": ["BALLON", ["BAL", "LON"]],
+            "🎁": ["CADEAU", ["CA", "DEAU"]],
+            "🎸": ["GUITARE", ["GUI", "TA", "RE"]],
+            "⚽": ["BALLON", ["BAL", "LON"]],
+            "🔑": ["CLE", ["CLE"]],
+            "⏰": ["REVEIL", ["RE", "VEIL"]],
+            "📖": ["LIVRE", ["LI", "VRE"]],
+            "✏️": ["CRAYON", ["CRA", "YON"]],
+            "🎒": ["SAC", ["SAC"]],
+            "👕": ["T SHIRT", ["T", "SHIRT"]],
+            "👞": ["CHAUSSURE", ["CHAUS", "SU", "RE"]],
+            "🧢": ["CASQUETTE", ["CAS", "QUET", "TE"]]
+        };
+
+        // --- BLE CRC32 Helper ---
+        function crc32(uint8Array) {
+            let table = [];
+            for (let i = 0; i < 256; i++) {
+                let c = i;
+                for (let j = 0; j < 8; j++) {
+                    c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+                }
+                table[i] = c;
+            }
+            let crc = 0 ^ -1;
+            for (let i = 0; i < uint8Array.length; i++) {
+                crc = (crc >>> 8) ^ table[(crc ^ uint8Array[i]) & 0xFF];
+            }
+            return (crc ^ -1) >>> 0;
+        }
+
+        // --- Frame Builder Helper ---
+        function buildSendPlan(pngBytes, saveSlot = 0) {
+            const sizeBytes = new Uint8Array(4);
+            new DataView(sizeBytes.buffer).setUint32(0, pngBytes.length, true);
+            
+            const crcVal = crc32(pngBytes);
+            const crcBytes = new Uint8Array(4);
+            new DataView(crcBytes.buffer).setUint32(0, crcVal, true);
+
+            const header = new Uint8Array(13);
+            header[0] = 0x02; // Image type
+            header[1] = 0x00;
+            header[2] = 0x00; // Option: first frame
+            header.set(sizeBytes, 3);
+            header.set(crcBytes, 7);
+            header[11] = 0x00;
+            header[12] = saveSlot;
+
+            const frameContent = new Uint8Array(header.length + pngBytes.length);
+            frameContent.set(header, 0);
+            frameContent.set(pngBytes, header.length);
+
+            const frameLen = frameContent.length + 2;
+            const prefix = new Uint8Array(2);
+            new DataView(prefix.buffer).setUint16(0, frameLen, true);
+
+            const message = new Uint8Array(prefix.length + frameContent.length);
+            message.set(prefix, 0);
+            message.set(frameContent, prefix.length);
+
+            return message;
+        }
+
+        function debugLog(msg, isError = false) {
+            console.log(msg);
+        }
+
+        function disconnectBLE() {
+            if (ble.device && ble.device.gatt.connected) {
+                ble.device.gatt.disconnect();
+            }
+        }
+
+        // --- BLE Class ---
+        class IPixelBLE {
+            constructor() {
+                this.device = null;
+                this.gattServer = null;
+                this.writeChar = null;
+                this.notifyChar = null;
+                this.connected = false;
+                this.ackResolver = null;
+                this.connecting = false;
+            }
+
+            async connect() {
+                if (this.connecting || this.connected) return;
+                this.connecting = true;
+                updateStatus('connecting', 'Connexion...');
+                debugLog("Début connexion...");
+
+                try {
+                    const servicesList = [
+                        '000000fa-0000-1000-8000-00805f9b34fb',
+                        '0000fa00-0000-1000-8000-00805f9b34fb',
+                        '0000fa01-0000-1000-8000-00805f9b34fb',
+                        '0000fa02-0000-1000-8000-00805f9b34fb',
+                        '0000fa03-0000-1000-8000-00805f9b34fb',
+                        '0000ae00-0000-1000-8000-00805f9b34fb',
+                        '0000ae01-0000-1000-8000-00805f9b34fb',
+                        '0000ae02-0000-1000-8000-00805f9b34fb',
+                        '0000ae10-0000-1000-8000-00805f9b34fb',
+                        '0000ae30-0000-1000-8000-00805f9b34fb',
+                        '00001800-0000-1000-8000-00805f9b34fb',
+                        '00001801-0000-1000-8000-00805f9b34fb',
+                        '0000180a-0000-1000-8000-00805f9b34fb'
+                    ];
+                    
+                    debugLog("Recherche de l'appareil (LED_BLE_)...");
+                    this.device = await navigator.bluetooth.requestDevice({
+                        filters: [
+                            { namePrefix: 'LED_BLE_' }
+                        ],
+                        optionalServices: servicesList
+                    });
+                    debugLog("Appareil choisi: " + this.device.name);
+
+                    this.device.addEventListener('gattserverdisconnected', () => {
+                        debugLog("Déconnecté de l'appareil", true);
+                        this.handleDisconnect();
+                    });
+
+                    debugLog("Connexion au serveur GATT...");
+                    this.gattServer = await this.device.gatt.connect();
+                    debugLog("GATT connecté !");
+                    
+                    debugLog("Attente de 1.5s pour la découverte...");
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
+                    debugLog("Obtention des services primaires...");
+                    const services = await this.gattServer.getPrimaryServices();
+                    debugLog(`Services trouvés: ${services.length}`);
+                    
+                    let targetService = null;
+                    for (const s of services) {
+                        const shortUUID = s.uuid.split('-')[0].substring(4);
+                        debugLog("Service découvert: " + shortUUID);
+                        
+                        if (shortUUID === 'ae00' || shortUUID === 'fa00' || shortUUID === '00fa' || shortUUID.startsWith('fa')) {
+                            try {
+                                const characteristics = await s.getCharacteristics();
+                                debugLog(`Characs dans ${shortUUID}: ${characteristics.length}`);
+                                
+                                for (const c of characteristics) {
+                                    const cUUID = c.uuid.split('-')[0].substring(4);
+                                    const props = [];
+                                    if (c.properties.write) props.push("write");
+                                    if (c.properties.writeWithoutResponse) props.push("writeWithoutResp");
+                                    if (c.properties.notify) props.push("notify");
+                                    if (c.properties.indicate) props.push("indicate");
+                                    debugLog(`  └─ ${cUUID} [${props.join(',')}]`);
+                                    
+                                    if (cUUID === 'fa02' || cUUID === 'ae01') {
+                                        this.writeChar = c;
+                                        debugLog("-> Write mappé sur: " + cUUID);
+                                    }
+                                    if (cUUID === 'fa03' || cUUID === 'ae02') {
+                                        this.notifyChar = c;
+                                        debugLog("-> Notify mappé sur: " + cUUID);
+                                    }
+                                }
+                                
+                                if (this.writeChar && this.notifyChar) {
+                                    targetService = s;
+                                    debugLog("Caractéristiques iPixel résolues !");
+                                    // Prioritize the 000000fa service if both are present
+                                    if (shortUUID === '00fa' || shortUUID === 'fa00') {
+                                        break;
+                                    }
+                                }
+                            } catch (err) {
+                                debugLog("Erreur characs: " + err.message, true);
+                            }
+                        }
+                    }
+
+                    if (!targetService || !this.writeChar || !this.notifyChar) {
+                        throw new Error("Caractéristiques iPixel (fa02/fa03 ou ae01/ae02) introuvables.");
+                    }
+                    
+                    debugLog("Enregistrement du listener notify...");
+                    this.notifyChar.addEventListener('characteristicvaluechanged', (e) => {
+                        const view = e.target.value;
+                        const val = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+                        debugLog("Notify rec: " + Array.from(val).map(b => b.toString(16).padStart(2, '0')).join(' '));
+                        if (val.length >= 5 && val[0] === 0x05) {
+                            const b4 = val[4];
+                            if (b4 === 0 || b4 === 1 || b4 === 3) {
+                                if (this.ackResolver) {
+                                    this.ackResolver();
+                                    this.ackResolver = null;
+                                    debugLog("ACK reçu !");
+                                }
+                            }
+                        }
+                    });
+                    
+                    debugLog("Démarrage notifications...");
+                    await this.notifyChar.startNotifications();
+                    debugLog("Notifications OK.");
+
+                    this.connected = true;
+                    this.connecting = false;
+                    updateStatus('online', 'Connecté');
+                    document.getElementById('connect-overlay').classList.add('hidden');
+
+                    // Sync time first to exit pairing mode
+                    await this.syncTime();
+
+                    // Set default brightness to 70
+                    await this.setBrightness(70);
+
+                } catch (err) {
+                    console.error("Connection failed", err);
+                    this.handleDisconnect();
+                    throw err;
+                }
+            }
+
+            handleDisconnect() {
+                this.connected = false;
+                this.connecting = false;
+                this.writeChar = null;
+                this.notifyChar = null;
+                updateStatus('offline', 'Déconnecté');
+                document.getElementById('connect-overlay').classList.remove('hidden');
+                if (autoplayIntervalId) {
+                    toggleAutoplay();
+                }
+            }
+
+            async writeValue(payload) {
+                try {
+                    const canWrite = this.writeChar.properties.write;
+                    const canWriteWithoutResponse = this.writeChar.properties.writeWithoutResponse;
+                    if (canWriteWithoutResponse && !canWrite) {
+                        await this.writeChar.writeValueWithoutResponse(payload);
+                        await new Promise(resolve => setTimeout(resolve, 25));
+                    } else {
+                        await this.writeChar.writeValueWithResponse(payload);
+                    }
+                } catch (e) {
+                    await this.writeChar.writeValueWithoutResponse(payload);
+                    await new Promise(resolve => setTimeout(resolve, 25));
+                }
+            }
+
+            async syncTime() {
+                if (!this.connected) return;
+                const now = new Date();
+                const payload = new Uint8Array([
+                    8,                 // Command length
+                    0,                 // Reserved
+                    1,                 // Sub-command
+                    0x80,              // Command type ID
+                    now.getHours(),
+                    now.getMinutes(),
+                    now.getSeconds(),
+                    0                  // Reserved (Language)
+                ]);
+                
+                const ackPromise = new Promise((resolve) => {
+                    this.ackResolver = resolve;
+                    setTimeout(() => {
+                        if (this.ackResolver === resolve) {
+                            this.ackResolver = null;
+                            resolve();
+                        }
+                    }, 3000);
+                });
+
+                await this.writeValue(payload);
+                await ackPromise;
+            }
+
+            async setBrightness(level) {
+                if (!this.connected) return;
+                const payload = new Uint8Array([5, 0, 4, 0x80, level]);
+                
+                const ackPromise = new Promise((resolve) => {
+                    this.ackResolver = resolve;
+                    setTimeout(() => {
+                        if (this.ackResolver === resolve) {
+                            this.ackResolver = null;
+                            resolve(); // resolve on timeout to not block
+                        }
+                    }, 4000);
+                });
+
+                await this.writeValue(payload);
+                await ackPromise;
+            }
+
+            async sendImage(pngBytes) {
+                if (!this.connected) return;
+                const message = buildSendPlan(pngBytes);
+                const chunk_size = 244;
+
+                const ackPromise = new Promise((resolve) => {
+                    this.ackResolver = resolve;
+                    setTimeout(() => {
+                        if (this.ackResolver === resolve) {
+                            this.ackResolver = null;
+                            debugLog("Note: Timeout ACK de l'écran, continue...", false);
+                            resolve();
+                        }
+                    }, 3000);
+                });
+
+                for (let i = 0; i < message.length; i += chunk_size) {
+                    const chunk = message.subarray(i, i + chunk_size);
+                    await this.writeValue(chunk);
+                }
+
+                await ackPromise;
+            }
+        }
+
+        // --- State Management ---
+        const ble = new IPixelBLE();
+        const canvas = document.getElementById('matrix-canvas');
+        const emojiList = Object.keys(VOCABULARY);
+        
+        // Shuffle helper
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+        shuffle(emojiList);
+
+        let wordIdx = 0;
+        let stepIdx = -1;
+        let isNavigating = false;
+        let autoplayIntervalId = null;
+        let autoplaySpeed = 2.0;
+        let lastNavTime = 0;
+        let confettiActive = false;
+
+        function updateStatus(status, text) {
+            const dot = document.getElementById('status-dot');
+            dot.className = 'status-dot';
+            if (status === 'online') dot.classList.add('online');
+            else if (status === 'connecting') dot.classList.add('connecting');
+            document.getElementById('status-text').textContent = text;
+        }
+
+        async function requestConnection() {
+            try {
+                await ble.connect();
+                // Render initial state
+                await triggerRender();
+            } catch (err) {
+                showToast("Échec de connexion BLE. Vérifiez que Bluetooth est activé.");
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.add('visible');
+            setTimeout(() => toast.classList.remove('visible'), 3000);
+        }
+
+        function wrapText(text, maxChars = 6) {
+            const words = text.split(' ');
+            let lines = [];
+            let currentLine = [];
+            let currentLen = 0;
+
+            for (let word of words) {
+                if (word.length > maxChars) {
+                    if (currentLine.length) {
+                        lines.push(currentLine.join(' '));
+                        currentLine = [];
+                        currentLen = 0;
+                    }
+                    for (let i = 0; i < word.length; i += maxChars) {
+                        lines.push(word.substring(i, i + maxChars));
+                    }
+                    continue;
+                }
+                const space = currentLine.length ? 1 : 0;
+                if (currentLen + space + word.length <= maxChars) {
+                    currentLine.push(word);
+                    currentLen += space + word.length;
+                } else {
+                    lines.push(currentLine.join(' '));
+                    currentLine = [word];
+                    currentLen = word.length;
+                }
+            }
+            if (currentLine.length) lines.push(currentLine.join(' '));
+            return lines.slice(0, 5);
+        }
+
+        function getBestFontSize(ctx, text, maxWidth = 32) {
+            for (let size = 16; size >= 8; size--) {
+                ctx.font = `bold ${size}px Silkscreen, monospace`;
+                if (ctx.measureText(text).width <= maxWidth) {
+                    return size;
+                }
+            }
+            return 8;
+        }
+
+        // --- Pure JS 24-bit RGB PNG Encoder ---
+        function adler32(data) {
+            let a = 1, b = 0;
+            for (let i = 0; i < data.length; i++) {
+                a = (a + data[i]) % 65521;
+                b = (b + a) % 65521;
+            }
+            return ((b << 16) | a) >>> 0;
+        }
+
+        function makeChunk(typeStr, data) {
+            const typeBytes = new TextEncoder().encode(typeStr);
+            const len = data ? data.length : 0;
+            const buf = new Uint8Array(4 + 4 + len + 4);
+            const view = new DataView(buf.buffer);
+            view.setUint32(0, len, false); // Length big-endian
+            buf.set(typeBytes, 4);
+            if (data) buf.set(data, 8);
+            const crcInput = buf.subarray(4, 8 + len);
+            const crcVal = crc32(crcInput);
+            view.setUint32(8 + len, crcVal, false); // CRC big-endian
+            return buf;
+        }
+
+        async function generateRGBPNG(pixels) {
+            const rawData = new Uint8Array(32 * 97);
+            let writePos = 0;
+            for (let y = 0; y < 32; y++) {
+                rawData[writePos++] = 0; // Filter Type: None
+                for (let x = 0; x < 32; x++) {
+                    const readPos = (y * 32 + x) * 4;
+                    rawData[writePos++] = pixels[readPos];
+                    rawData[writePos++] = pixels[readPos + 1];
+                    rawData[writePos++] = pixels[readPos + 2];
+                }
+            }
+
+            // Compress using native CompressionStream ('deflate' generates standard zlib format)
+            const stream = new Response(rawData).body.pipeThrough(new CompressionStream('deflate'));
+            const compressedBuffer = await new Response(stream).arrayBuffer();
+            const zlibStream = new Uint8Array(compressedBuffer);
+
+            const ihdrData = new Uint8Array(13);
+            const view = new DataView(ihdrData.buffer);
+            view.setUint32(0, 32, false);
+            view.setUint32(4, 32, false);
+            ihdrData[8] = 8;
+            ihdrData[9] = 2; // RGB (No Alpha)
+            ihdrData[10] = 0;
+            ihdrData[11] = 0;
+            ihdrData[12] = 0;
+
+            const ihdrChunk = makeChunk('IHDR', ihdrData);
+            const idatChunk = makeChunk('IDAT', zlibStream);
+            const iendChunk = makeChunk('IEND', null);
+
+            const pngSignature = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+            const pngBytes = new Uint8Array(pngSignature.length + ihdrChunk.length + idatChunk.length + iendChunk.length);
+            let offset = 0;
+            pngBytes.set(pngSignature, offset); offset += pngSignature.length;
+            pngBytes.set(ihdrChunk, offset); offset += ihdrChunk.length;
+            pngBytes.set(idatChunk, offset); offset += idatChunk.length;
+            pngBytes.set(iendChunk, offset); offset += iendChunk.length;
+
+            return pngBytes;
+        }
+
+        // --- Render functions ---
+        async function triggerRender() {
+            if (!ble.connected) return;
+
+            const selectedEmoji = emojiList[wordIdx];
+            const [fullWord, syllables] = VOCABULARY[selectedEmoji];
+
+            document.getElementById('word-meta').textContent = `Mot ${wordIdx + 1} / ${emojiList.length}`;
+
+            if (confettiActive) return; // Skip rendering normal screen while confetti is active
+
+            if (stepIdx === -1) {
+                // Render Large Emoji
+                renderEmojiState(selectedEmoji);
+            } else {
+                // Compute progress percentage if autoplay is active
+                let progressPct = null;
+                if (autoplayIntervalId && lastNavTime > 0) {
+                    const elapsed = (Date.now() - lastNavTime) / 1000;
+                    progressPct = Math.min(100.0, (elapsed / autoplaySpeed) * 100);
+                }
+                renderSyllableState(fullWord, syllables, stepIdx, progressPct);
+            }
+
+            // Convert canvas to RGB PNG bytes and send to device
+            try {
+                const ctx = canvas.getContext('2d');
+                const imgData = ctx.getImageData(0, 0, 32, 32);
+                const pngBytes = await generateRGBPNG(imgData.data);
+                await ble.sendImage(pngBytes);
+            } catch (err) {
+                console.error("Error sending image", err);
+                showToast("Erreur d'envoi. Reconnexion automatique...");
+                // Autoretry on connection failure
+                try {
+                    await ble.connect();
+                } catch(e) {}
+            }
+        }
+
+        function renderEmojiState(emoji) {
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, 32, 32);
+
+            ctx.font = "24px 'Outfit', sans-serif";
+            ctx.fillStyle = "#FFFFFF";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(emoji, 16, 16);
+        }
+
+        function renderSyllableState(fullWord, syllables, activeIdx, progressPct) {
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, 32, 32);
+
+            const textColor = "#FF9F00";
+            const syllableColor = "#00FFFF";
+
+            const lines = wrapText(fullWord, 6);
+            if (lines.length > 0) {
+                let charToSyllable = [];
+                let currentSylIdx = 0;
+                let charsInCurrentSyl = 0;
+                for (let char of fullWord) {
+                    if (char === ' ') {
+                        charToSyllable.push(-1);
+                    } else {
+                        charToSyllable.push(currentSylIdx);
+                        charsInCurrentSyl++;
+                        if (currentSylIdx < syllables.length && charsInCurrentSyl === syllables[currentSylIdx].length) {
+                            currentSylIdx++;
+                            charsInCurrentSyl = 0;
+                        }
+                    }
+                }
+
+                let charCounter = 0;
+                for (let lineIdx = 0; lineIdx < Math.min(lines.length, 2); lineIdx++) {
+                    const line = lines[lineIdx];
+                    const totalWidth = line.length * 5 - 1;
+                    const startX = Math.floor((32 - totalWidth) / 2);
+                    const yOffset = lineIdx * 6;
+
+                    for (let charIdx = 0; charIdx < line.length; charIdx++) {
+                        const char = line[charIdx];
+                        const xOffset = startX + charIdx * 5;
+                        const glyph = FONT_4X5[char] || FONT_4X5['?'];
+
+                        ctx.fillStyle = (charCounter < charToSyllable.length && charToSyllable[charCounter] === activeIdx) ? syllableColor : textColor;
+                        charCounter++;
+
+                        if (char !== ' ' && glyph) {
+                            for (let row = 0; row < 5; row++) {
+                                for (let col = 0; col < 4; col++) {
+                                    if (glyph[row][col] === '#') {
+                                        ctx.fillRect(xOffset + col, yOffset + row, 1, 1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            const numLines = lines.length;
+            let dotY, sylYStart, sylHeight;
+            if (numLines <= 1) {
+                dotY = 6;
+                sylYStart = 8;
+                sylHeight = (progressPct !== null) ? 23 : 24;
+            } else {
+                dotY = 12;
+                sylYStart = 14;
+                sylHeight = (progressPct !== null) ? 17 : 18;
+            }
+
+            // Draw progress dots
+            const numSyllables = syllables.length;
+            const dotsWidth = numSyllables * 3 - 2;
+            const dotsStartX = Math.floor((32 - dotsWidth) / 2);
+            for (let idx = 0; idx < numSyllables; idx++) {
+                const dotX = dotsStartX + idx * 3;
+                ctx.fillStyle = (idx === activeIdx) ? syllableColor : "#3c3c3c";
+                ctx.fillRect(dotX, dotY, 1, 1);
+            }
+
+            // Draw active syllable
+            const syllable = syllables[activeIdx] || "";
+            const fontSize = getBestFontSize(ctx, syllable, 32);
+            ctx.font = `bold ${fontSize}px Silkscreen, monospace`;
+            ctx.fillStyle = syllableColor;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            const midY = sylYStart + Math.floor(sylHeight / 2);
+            ctx.fillText(syllable, 16, midY);
+
+            // Draw progress bar
+            if (progressPct !== null) {
+                const barX0 = 3;
+                const barX1 = 29;
+                const barLen = Math.floor((progressPct / 100.0) * (barX1 - barX0));
+                ctx.fillStyle = textColor;
+                ctx.fillRect(barX0, 31, barLen, 1);
+            }
+        }
+
+        // --- Navigation ---
+        async function navigate(direction) {
+            if (!ble.connected) {
+                showToast("Écran déconnecté. Connexion requise.");
+                return;
+            }
+            if (isNavigating) return;
+            isNavigating = true;
+
+            const selectedEmoji = emojiList[wordIdx];
+            const [_, syllables] = VOCABULARY[selectedEmoji];
+
+            if (direction === 'right') {
+                if (stepIdx < syllables.length - 1) {
+                    stepIdx++;
+                } else {
+                    wordIdx = (wordIdx + 1) % emojiList.length;
+                    stepIdx = -1;
+                }
+            } else if (direction === 'left') {
+                if (stepIdx > -1) {
+                    stepIdx--;
+                } else {
+                    wordIdx = (wordIdx - 1 + emojiList.length) % emojiList.length;
+                    const prevEmoji = emojiList[wordIdx];
+                    const [__, prevSyllables] = VOCABULARY[prevEmoji];
+                    stepIdx = prevSyllables.length - 1;
+                }
+            }
+
+            lastNavTime = Date.now();
+            await triggerRender();
+            isNavigating = false;
+        }
+
+        // --- Confetti Cannon ---
+        async function triggerConfetti() {
+            if (!ble.connected || confettiActive) return;
+            confettiActive = true;
+            toggleAutoplay(false); // Pause autoplay
+
+            const COLORS = [
+                '#FF5050', '#FFD228', '#50D25A', '#3C8CFF',
+                '#FF8C14', '#C864FF', '#32D2E6', '#FF1E82',
+                '#A0E664', '#FFFFFF', '#FFB400', '#00FFC8'
+            ];
+
+            const particles = [];
+            for (let i = 0; i < 50; i++) {
+                particles.push({
+                    x: 11 + Math.random() * 10,
+                    y: 31.0,
+                    vx: -4.0 + Math.random() * 8.0,
+                    vy: -4.5 + Math.random() * 3.3,
+                    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                    size: Math.random() < 0.25 ? 2 : 1
+                });
+            }
+
+            const ctx = canvas.getContext('2d');
+            const gravity = 0.22;
+
+            for (let frame = 0; frame < 45; frame++) {
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(0, 0, 32, 32);
+
+                for (let p of particles) {
+                    p.vy += gravity;
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vx *= 0.97; // air drag
+
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
+                }
+
+                try {
+                    const imgData = ctx.getImageData(0, 0, 32, 32);
+                    const pngBytes = await generateRGBPNG(imgData.data);
+                    await ble.sendImage(pngBytes);
+                } catch (e) {
+                    console.error("Confetti frame send error", e);
+                }
+            }
+
+            confettiActive = false;
+            await triggerRender(); // Restore normal screen
+        }
+
+        // --- Autoplay ---
+        function toggleAutoplay(forceState = null) {
+            const btn = document.getElementById('btn-autoplay');
+            const shouldStart = (forceState !== null) ? forceState : !autoplayIntervalId;
+
+            if (!shouldStart) {
+                if (autoplayIntervalId) {
+                    clearInterval(autoplayIntervalId);
+                    autoplayIntervalId = null;
+                }
+                btn.classList.remove('active');
+                btn.textContent = 'Auto Run';
+            } else {
+                if (!ble.connected) {
+                    showToast("Écran déconnecté. Connexion requise.");
+                    return;
+                }
+                lastNavTime = Date.now();
+                btn.classList.add('active');
+                btn.textContent = 'Pause';
+                
+                // Run ticker for progress bar updates
+                autoplayIntervalId = setInterval(async () => {
+                    const elapsed = (Date.now() - lastNavTime) / 1000;
+                    if (elapsed >= autoplaySpeed) {
+                        await navigate('right');
+                    } else {
+                        // Just redraw the progress bar
+                        await triggerRender();
+                    }
+                }, 200);
+            }
+        }
+
+        function updateTimerVal(val) {
+            document.getElementById('timer-val').textContent = val;
+            autoplaySpeed = parseFloat(val);
+        }
+
+        // --- Gestures ---
+        let touchstartX = 0, touchstartY = 0, touchendX = 0, touchendY = 0;
+        document.body.addEventListener('touchstart', (e) => {
+            touchstartX = e.changedTouches[0].screenX;
+            touchstartY = e.changedTouches[0].screenY;
+        }, { passive: true });
+        
+        document.body.addEventListener('touchend', (e) => {
+            touchendX = e.changedTouches[0].screenX;
+            touchendY = e.changedTouches[0].screenY;
+            const diffX = touchendX - touchstartX;
+            const diffY = touchendY - touchstartY;
+            if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+                navigate(diffX > 0 ? 'left' : 'right');
+            }
+        }, { passive: true });
+
+        // --- Keyboard Controls ---
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') navigate('right');
+            else if (e.key === 'ArrowLeft') navigate('left');
+        });
+    </script>
+</body>
+</html>
