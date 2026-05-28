@@ -190,15 +190,73 @@
             cursor: not-allowed;
         }
 
-        /* Bottom Row with Prev & Autoplay */
+        /* Bottom Row with Prev, Mode Select & Confetti */
         .bottom-row {
             display: grid;
-            grid-template-columns: 1fr 1.2fr 1fr;
-            gap: 10px;
+            grid-template-columns: 1.1fr 1.2fr 0.7fr;
+            gap: 8px;
             width: 100%;
             padding-top: 10px;
             border-top: 1px solid rgba(255, 255, 255, 0.08);
             flex-shrink: 0;
+        }
+
+        /* Autoplay Controls (Button + Slider side-by-side) */
+        .autoplay-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            padding-top: 4px;
+            flex-shrink: 0;
+        }
+
+        .autoplay-row .btn-autoplay {
+            width: 110px;
+            flex-shrink: 0;
+            margin: 0;
+        }
+
+        .autoplay-row .timer-control {
+            flex-grow: 1;
+        }
+
+        .mode-select {
+            width: 100%;
+            height: 48px;
+            font-size: 0.78rem;
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 0 4px;
+            font-family: inherit;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ff9f00' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 4px center;
+            background-size: 10px;
+            padding-right: 16px;
+            text-align: center;
+        }
+
+        .mode-select:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 159, 0, 0.3);
+        }
+
+        .mode-select:focus {
+            border-color: #ff9f00;
+        }
+
+        .mode-select option {
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 0.85rem;
         }
 
         .btn-small {
@@ -354,6 +412,7 @@
     </style>
 </head>
 <body>
+
     <!-- Connection Overlay -->
     <div class="connect-overlay" id="connect-overlay">
         <div>
@@ -400,23 +459,31 @@
                 </button>
             </div>
 
-            <!-- Bottom Row with Prev, Auto Run, Confetti -->
+            <!-- Bottom Row with Prev, Mode Select, Confetti -->
             <div class="bottom-row">
                 <button class="btn btn-small" onclick="navigate('left')" aria-label="Précédent">
                     Précédent
                 </button>
-                <button class="btn btn-autoplay" id="btn-autoplay" onclick="toggleAutoplay()">
-                    Auto Run
-                </button>
+                <select id="mode-select" class="mode-select" onchange="changeMode(this.value)" aria-label="Niveau d'apprentissage">
+                    <option value="0">Lvl 1</option>
+                    <option value="1">Lvl 2</option>
+                    <option value="2">Lvl 3</option>
+                    <option value="3" selected>Random</option>
+                </select>
                 <button class="btn btn-confetti" onclick="triggerConfetti()" aria-label="Confetti">
                     🎉
                 </button>
             </div>
 
-            <!-- Autoplay Timer Slider -->
-            <div class="timer-control">
-                <label for="autoplay-timer">Vitesse: <span id="timer-val">2.0</span>s</label>
-                <input type="range" id="autoplay-timer" min="1.0" max="10.0" step="0.5" value="2.0" oninput="updateTimerVal(this.value)">
+            <!-- Autoplay Controls (Button + Slider side-by-side) -->
+            <div class="autoplay-row">
+                <button class="btn btn-autoplay" id="btn-autoplay" onclick="toggleAutoplay()">
+                    Auto Run
+                </button>
+                <div class="timer-control">
+                    <label for="autoplay-timer">Vitesse: <span id="timer-val">2.0</span>s</label>
+                    <input type="range" id="autoplay-timer" min="1.0" max="20.0" step="0.5" value="2.0" oninput="updateTimerVal(this.value)">
+                </div>
             </div>
         </div>
         
@@ -566,7 +633,20 @@
             "🎒": ["SAC", ["SAC"]],
             "👕": ["T SHIRT", ["T", "SHIRT"]],
             "👞": ["CHAUSSURE", ["CHAUS", "SU", "RE"]],
-            "🧢": ["CASQUETTE", ["CAS", "QUET", "TE"]]
+            "🧢": ["CASQUETTE", ["CAS", "QUET", "TE"]],
+            "🦙": ["LAMA", ["LA", "MA"]],
+            "🦖": ["DINO", ["DI", "NO"]],
+            "🥋": ["KIMONO", ["KI", "MO", "NO"]],
+            "🛖": ["CABANE", ["CA", "BA", "NE"]],
+            "👖": ["PYJAMA", ["PY", "JA", "MA"]],
+            "🍷": ["TUBE", ["TU", "BE"]],
+            "🪐": ["LUNE", ["LU", "NE"]],
+            "🐔": ["POULE", ["POU", "LE"]],
+            "🧸": ["OURSON", ["OUR", "SON"]],
+            "🍈": ["MELON", ["ME", "LON"]],
+            "🦘": ["KANGOUROU", ["KAN", "GOU", "ROU"]],
+            "🧼": ["SAVON", ["SA", "VON"]],
+            "🔔": ["CLOCHE", ["CLO", "CHE"]]
         };
 
         // --- BLE CRC32 Helper ---
@@ -889,7 +969,7 @@
         // --- State Management ---
         const ble = new IPixelBLE();
         const canvas = document.getElementById('matrix-canvas');
-        const emojiList = Object.keys(VOCABULARY);
+        let emojiList = [];
         
         // Shuffle helper
         function shuffle(array) {
@@ -898,7 +978,6 @@
                 [array[i], array[j]] = [array[j], array[i]];
             }
         }
-        shuffle(emojiList);
 
         let wordIdx = 0;
         let stepIdx = -1;
@@ -907,6 +986,39 @@
         let autoplaySpeed = 2.0;
         let lastNavTime = 0;
         let confettiActive = false;
+        let currentMode = 3; // 0: Level 1, 1: Level 2, 2: Level 3, 3: Level 4 (All)
+
+        const MODE_1_EMOJIS = [
+            "🍌", "🍅", "🍒", "🦒", "🥥", "🥝", "☕", "🚕", "🚲", "🏍️", "🦙", "🦖", "🥋", "🛖", "👖", "🍷", "🪐"
+        ];
+        
+        const MODE_2_EMOJIS = [
+            "🐰", "🐼", "🐯", "🐮", "🐵", "🦉", "🐴", "🐑", "🐐", "🍐", "🍇", "🍨", "🍩", "🍬", "🏠", "🎈", "⚽", "📖", "✏️", "🐔", "🧸", "🍈", "🦘", "🧼", "🔔"
+        ];
+
+        function initEmojiList() {
+            let list = [];
+            if (currentMode === 0) {
+                list = MODE_1_EMOJIS.filter(e => VOCABULARY[e]);
+            } else if (currentMode === 1) {
+                list = MODE_2_EMOJIS.filter(e => VOCABULARY[e]);
+            } else if (currentMode === 2) {
+                const excluded = [...MODE_1_EMOJIS, ...MODE_2_EMOJIS];
+                list = Object.keys(VOCABULARY).filter(e => !excluded.includes(e));
+            } else {
+                list = Object.keys(VOCABULARY);
+            }
+            shuffle(list);
+            emojiList = list;
+            wordIdx = 0;
+            stepIdx = -1;
+        }
+
+        async function changeMode(modeVal) {
+            currentMode = parseInt(modeVal);
+            initEmojiList();
+            await triggerRender();
+        }
 
         function updateStatus(status, text) {
             const dot = document.getElementById('status-dot');
@@ -968,7 +1080,9 @@
         function getBestFontSize(ctx, text, maxWidth = 32) {
             for (let size = 16; size >= 8; size--) {
                 ctx.font = `${size}px Silkscreen, monospace`;
-                if (ctx.measureText(text).width <= maxWidth) {
+                const metrics = ctx.measureText(text);
+                const w = metrics.actualBoundingBoxRight + metrics.actualBoundingBoxLeft;
+                if (w <= maxWidth) {
                     return size;
                 }
             }
@@ -1044,9 +1158,9 @@
 
         // --- Render functions ---
         async function triggerRender(skipBLE = false) {
-            if (!ble.connected) return;
-
             const selectedEmoji = emojiList[wordIdx];
+            if (!selectedEmoji) return;
+
             const [fullWord, syllables] = VOCABULARY[selectedEmoji];
 
             document.getElementById('word-meta').textContent = `Mot ${wordIdx + 1} / ${emojiList.length}`;
@@ -1066,7 +1180,7 @@
                 renderSyllableState(fullWord, syllables, stepIdx, progressPct);
             }
 
-            if (skipBLE) return;
+            if (skipBLE || !ble.connected) return;
 
             // Convert canvas to RGB PNG bytes and send to device
             try {
@@ -1098,43 +1212,41 @@
         }
 
         function drawPixelText(ctx, text, size, color, targetY, targetHeight) {
-            const scale = 8;
             const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = 32 * scale;
-            tempCanvas.height = 32 * scale;
+            tempCanvas.width = 32;
+            tempCanvas.height = 32;
             const tempCtx = tempCanvas.getContext('2d');
             
+            tempCtx.imageSmoothingEnabled = false;
             tempCtx.fillStyle = '#000000';
-            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            tempCtx.fillRect(0, 0, 32, 32);
             
-            tempCtx.font = `${size * scale}px Silkscreen, monospace`;
+            tempCtx.font = `${size}px Silkscreen, monospace`;
             tempCtx.fillStyle = '#FFFFFF';
-            tempCtx.textAlign = 'center';
-            tempCtx.textBaseline = 'middle';
+            tempCtx.textAlign = 'left';
+            tempCtx.textBaseline = 'alphabetic';
             
-            const midY = (targetY + targetHeight / 2) * scale;
-            tempCtx.fillText(text, 16 * scale, midY);
+            const metrics = tempCtx.measureText(text);
+            const w = Math.ceil(metrics.actualBoundingBoxRight + metrics.actualBoundingBoxLeft);
+            const h = Math.ceil(metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent);
             
-            const imgData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            const startX = Math.floor((32 - w) / 2);
+            const startY = targetY + Math.floor((targetHeight - h) / 2);
+            
+            const x = startX + Math.floor(metrics.actualBoundingBoxLeft);
+            const y = startY + Math.floor(metrics.actualBoundingBoxAscent);
+            
+            tempCtx.fillText(text, x, y);
+            
+            const imgData = tempCtx.getImageData(0, 0, 32, 32);
             const data = imgData.data;
             
             ctx.fillStyle = color;
-            for (let py = 0; py < 32; py++) {
+            for (let py = targetY; py < targetY + targetHeight; py++) {
+                if (py >= 32) break;
                 for (let px = 0; px < 32; px++) {
-                    // Scan the entire 8x8 block on the high-res canvas
-                    let activeCount = 0;
-                    for (let dy = 0; dy < scale; dy++) {
-                        for (let dx = 0; dx < scale; dx++) {
-                            const sx = px * scale + dx;
-                            const sy = py * scale + dy;
-                            const idx = (sy * tempCanvas.width + sx) * 4;
-                            if (data[idx] > 128) {
-                                activeCount++;
-                            }
-                        }
-                    }
-                    // If any significant part of the block contains text (at least 4 pixels out of 64), render it
-                    if (activeCount >= 4 && py >= targetY && py < targetY + targetHeight) {
+                    const idx = (py * 32 + px) * 4;
+                    if (data[idx] > 128) {
                         ctx.fillRect(px, py, 1, 1);
                     }
                 }
@@ -1391,13 +1503,56 @@
             else if (e.key === 'ArrowLeft') navigate('left');
         });
 
+        function setupModeSelectDropdown() {
+            const selectEl = document.getElementById('mode-select');
+            if (!selectEl) return;
+
+            const longLabels = [
+                "Niv. 1 : Facile (2 lett.)",
+                "Niv. 2 : Moyen (2-3 lett.)",
+                "Niv. 3 : Dur (lettres muettes)",
+                "Niv. 4 : Tous les mots"
+            ];
+            const shortLabels = [
+                "Lvl 1",
+                "Lvl 2",
+                "Lvl 3",
+                "Random"
+            ];
+
+            const setLabels = (labels) => {
+                for (let i = 0; i < selectEl.options.length; i++) {
+                    if (selectEl.options[i]) {
+                        selectEl.options[i].text = labels[i];
+                    }
+                }
+            };
+
+            selectEl.addEventListener('focus', () => {
+                setLabels(longLabels);
+            });
+
+            selectEl.addEventListener('blur', () => {
+                setLabels(shortLabels);
+            });
+
+            selectEl.addEventListener('change', () => {
+                selectEl.blur();
+            });
+        }
+
+        // Initialize emoji list and initial render
+        initEmojiList();
+        setupModeSelectDropdown();
+        triggerRender(true);
+
         // --- Font Load Listener ---
         // Re-render when fonts are fully loaded to replace monospace fallback with Silkscreen
         document.fonts.ready.then(() => {
-            if (ble.connected) {
-                triggerRender();
-            }
+            triggerRender(true);
         });
+
+
     </script>
 </body>
 </html>
